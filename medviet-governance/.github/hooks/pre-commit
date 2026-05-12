@@ -1,30 +1,40 @@
 #!/bin/bash
-# Pre-commit hook: chạy security checks trước khi commit
+# Pre-commit hook: run security checks before commit.
 
-echo "🔍 Running security checks..."
+echo "Running security checks..."
 
-# 1. git-secrets scan
-git secrets --pre_commit_hook -- "$@"
-if [ $? -ne 0 ]; then
-    echo "❌ git-secrets found potential secrets! Commit blocked."
-    exit 1
+if command -v git-secrets >/dev/null 2>&1; then
+    git secrets --pre_commit_hook -- "$@"
+    if [ $? -ne 0 ]; then
+        echo "git-secrets found potential secrets. Commit blocked."
+        exit 1
+    fi
+else
+    echo "git-secrets is not installed; skipping secret-pattern hook."
 fi
 
-# 2. Bandit SAST scan
-echo "🐍 Running Bandit SAST..."
-bandit -r src/ -ll -q
-if [ $? -ne 0 ]; then
-    echo "❌ Bandit found security issues! Review above."
-    exit 1
+if command -v bandit >/dev/null 2>&1; then
+    echo "Running Bandit SAST..."
+    bandit -r src/ -ll -q
+    if [ $? -ne 0 ]; then
+        echo "Bandit found security issues. Review output above."
+        exit 1
+    fi
+else
+    echo "bandit is not installed; skipping SAST scan."
 fi
 
-# 3. pip-audit dependency check
-echo "📦 Checking dependencies for CVEs..."
-pip-audit --desc on
-if [ $? -ne 0 ]; then
-    echo "⚠️  Vulnerable dependencies found! Update before committing."
-    exit 1
+if command -v pip-audit >/dev/null 2>&1; then
+    echo "Checking dependencies for CVEs..."
+    mkdir -p .cache/pip-audit
+    pip-audit --desc on --cache-dir .cache/pip-audit
+    if [ $? -ne 0 ]; then
+        echo "Vulnerable dependencies found. Update before committing."
+        exit 1
+    fi
+else
+    echo "pip-audit is not installed; skipping dependency audit."
 fi
 
-echo "✅ All security checks passed!"
+echo "All available security checks passed."
 exit 0

@@ -1,0 +1,3 @@
+trufflehog is not installed in this environment, so the TruffleHog scan could not be executed.
+Install it locally, then run:
+trufflehog git file://. --only-verified > reports/trufflehog_report.txt

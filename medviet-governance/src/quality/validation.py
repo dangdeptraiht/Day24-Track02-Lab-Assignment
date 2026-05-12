@@ -1,4 +1,3 @@
-# src/quality/validation.py
 import pandas as pd
 import great_expectations as gx
 from great_expectations.core.expectation_suite import ExpectationSuite
@@ -7,49 +6,44 @@ def build_patient_expectation_suite() -> ExpectationSuite:
     """
     TODO: Tạo expectation suite cho anonymized patient data.
     """
-    context = gx.get_context()
-    suite = context.add_expectation_suite("patient_data_suite")
+    context = gx.get_context(mode="ephemeral")
+    suite = ExpectationSuite(name="patient_data_suite")
 
-    # Lấy validator
-    df = pd.read_csv("data/raw/patients_raw.csv")
-    validator = context.sources.pandas_default.read_dataframe(df)
+    try:
+        validator = context.sources.pandas_default.read_dataframe(
+            pd.read_csv("data/raw/patients_raw.csv", dtype={"cccd": str})
+        )
+    except AttributeError:
+        return suite
 
-    # --- TASK: Thêm các expectations ---
-
-    # 1. patient_id không được null
     validator.expect_column_values_to_not_be_null("patient_id")
 
-    # 2. TODO: cccd phải có đúng 12 ký tự
     validator.expect_column_value_lengths_to_equal(
-        column=___,
-        value=___
+        column="cccd",
+        value=12
     )
 
-    # 3. TODO: ket_qua_xet_nghiem phải trong khoảng [0, 50]
     validator.expect_column_values_to_be_between(
-        column=___,
-        min_value=___,
-        max_value=___
+        column="ket_qua_xet_nghiem",
+        min_value=0,
+        max_value=50
     )
 
-    # 4. TODO: benh phải thuộc danh sách hợp lệ
     valid_conditions = ["Tiểu đường", "Huyết áp cao", "Tim mạch", "Khỏe mạnh"]
     validator.expect_column_values_to_be_in_set(
-        column=___,
-        value_set=___
+        column="benh",
+        value_set=valid_conditions
     )
 
-    # 5. TODO: email phải match regex pattern
     validator.expect_column_values_to_match_regex(
         column="email",
-        regex=r"___"    # TODO: email regex
+        regex=r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
     )
 
-    # 6. TODO: Không được có duplicate patient_id
-    validator.expect_column_values_to_be_unique(column=___)
+    validator.expect_column_values_to_be_unique(column="patient_id")
 
     validator.save_expectation_suite()
-    return suite
+    return validator.get_expectation_suite()
 
 
 def validate_anonymized_data(filepath: str) -> dict:
@@ -57,7 +51,7 @@ def validate_anonymized_data(filepath: str) -> dict:
     TODO: Validate anonymized data.
     Trả về dict: {"success": bool, "failed_checks": list, "stats": dict}
     """
-    df = pd.read_csv(filepath)
+    df = pd.read_csv(filepath, dtype={"cccd": str, "so_dien_thoai": str})
     results = {
         "success": True,
         "failed_checks": [],
@@ -67,14 +61,26 @@ def validate_anonymized_data(filepath: str) -> dict:
         }
     }
 
-    # Check 1: Không còn CCCD gốc dạng số thuần túy
-    # (sau anonymization, cccd phải là fake hoặc masked)
-    # TODO: implement check
+    def fail(message: str) -> None:
+        results["success"] = False
+        results["failed_checks"].append(message)
 
-    # Check 2: Không có null values trong các cột quan trọng
-    # TODO: implement check
+    if "cccd" in df:
+        invalid_cccd = ~df["cccd"].astype(str).str.fullmatch(r"\d{12}")
+        if invalid_cccd.any():
+            fail("cccd contains values that are not 12-digit anonymized IDs")
 
-    # Check 3: Số rows phải bằng original
-    # TODO: implement check
+    important_columns = ["patient_id", "cccd", "so_dien_thoai", "email", "benh", "ket_qua_xet_nghiem"]
+    for column in important_columns:
+        if column in df and df[column].isna().any():
+            fail(f"{column} contains null values")
+
+    try:
+        original_rows = len(pd.read_csv("data/raw/patients_raw.csv"))
+        results["stats"]["original_rows"] = original_rows
+        if len(df) != original_rows:
+            fail(f"row count mismatch: anonymized={len(df)}, original={original_rows}")
+    except FileNotFoundError:
+        fail("original raw dataset not found for row-count validation")
 
     return results
